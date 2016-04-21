@@ -147,6 +147,7 @@ void GPSo::update(void) { //must have sei() somewhere before this
     
     if (!GPS.parse(stringptr))   // this also sets the newNMEAreceived() flag to false
       return;  // we can fail to parse a sentence in which case we should just wait for another
+    lcd.print(GPS.longitudeDegrees);
   } 
 }
 
@@ -155,7 +156,7 @@ void GPSo::waitT(int year_R, int month_R, int day_R, int hour_R, int minute_R, i
   while((year_R <= GPS.year) && (month_R <= GPS.month) && (day_R <= GPS.day) && (hour_R <= GPS.hour) && (minute_R <= GPS.minute) && (second_R << GPS.seconds)) {
     update();
   }
-  cli(); 
+  cli();
 }
 
 GPSo myGPS;               //used to operate the GPS
@@ -266,7 +267,7 @@ void unit_cntl::EXECUTE (void) { //Executes the command from the user end or fro
         }
         else if (num == 1) {
           // send latitude to user end
-          snprintf( PH, sizeof PH , "%06f%", GPS.latitude);
+          snprintf( PH, sizeof PH , "%06f%", GPS.latitudeDegrees);
           strcat(PH, "N");
           for( int l = 7; l<12; l++) {
             PH [l] = 'A';      
@@ -278,7 +279,7 @@ void unit_cntl::EXECUTE (void) { //Executes the command from the user end or fro
         }
         else if (num == 2) {
           //send longitude to user end
-          snprintf( PH, sizeof PH , "%07f%", GPS.longitude);
+          snprintf( PH, sizeof PH , "%07f%", GPS.longitudeDegrees);
           for( int l = 8; l<12; l++) {
             PH [l] = 'A';      
           }

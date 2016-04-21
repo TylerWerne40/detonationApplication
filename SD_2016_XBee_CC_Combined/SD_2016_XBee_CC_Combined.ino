@@ -18,7 +18,7 @@ void setup() {
   Serial.begin(9600); // 9600 Baud Rate, use 1,2,3?
   XBee.begin(9600);
   XBee.print('+++'); //AT mode
-  wait(1000);
+  delay(1000);
 }
 
 
