@@ -331,7 +331,6 @@ void unit_cntl::EXECUTE (void) { //Executes the command from the user end or fro
   else if(XBEE.Command == Explode_Now) {
       //run detonation code
       lcd.setBacklight(RED);
-      //snprintf(PH, sizeof PH, "AllahAckbar!");
       XBEE.Creator("Allah Ackbar");
       XBEE.Send();
       lcd.print("Exploded");
