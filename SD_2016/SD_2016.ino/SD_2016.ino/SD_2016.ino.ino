@@ -153,7 +153,7 @@ void GPSo::update(void) { //must have sei() somewhere before this
 
 void GPSo::waitT(int year_R, int month_R, int day_R, int hour_R, int minute_R, int second_R) {
   sei();
-  while((year_R <= GPS.year) && (month_R <= GPS.month) && (day_R <= GPS.day) && (hour_R <= GPS.hour) && (minute_R <= GPS.minute) && (second_R << GPS.seconds)) {
+  while((year_R <= GPS.year) && (month_R <= GPS.month) && (day_R <= GPS.day) && (hour_R <= GPS.hour) && (minute_R <= GPS.minute) && (second_R < GPS.seconds)) {
     update();
   }
   cli();
@@ -295,7 +295,7 @@ void unit_cntl::EXECUTE (void) { //Executes the command from the user end or fro
       //Delay code
       int days = (int) XBEE.data [0];
       days = days*100;
-      days += (int) XBEE.data [1];
+      days += 10*((int) XBEE.data [1]);
       days += (int) XBEE.data [2];
       int hour = (int) XBEE.data [3];
       hour = hour*10;
