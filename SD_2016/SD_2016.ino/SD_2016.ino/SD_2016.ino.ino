@@ -7,6 +7,7 @@
 Adafruit_GPS GPS(&mySerial);
 
 #define TO_HEX(i) (i <= 9 ? '0' + i : 'A' - 10 + i)
+#define GREENLED 39
 #define ARM 41
 #define EXPLODE 40
 #define SHM_SWIP 42
@@ -124,7 +125,8 @@ Comms XBEE;
 
 class GPSo {                  //Used to operate the GPS
   public:
-    void waitT(int, int, int, int, int, int);
+//    void waitT(int, int, int, int, int, int);
+    void waitT( int, int, int);
     void update(void);
     void begin(void);
   private:
@@ -151,9 +153,11 @@ void GPSo::update(void) { //must have sei() somewhere before this
   } 
 }
 
-void GPSo::waitT(int year_R, int month_R, int day_R, int hour_R, int minute_R, int second_R) {
+//void GPSo::waitT(int year_R, int month_R, int day_R, int hour_R, int minute_R, int second_R) {
+void GPSo::waitT(int hour_R, int minute_R, int second_R) {
   sei();
-  while((year_R <= GPS.year) && (month_R <= GPS.month) && (day_R <= GPS.day) && (hour_R <= GPS.hour) && (minute_R <= GPS.minute) && (second_R < GPS.seconds)) {
+  //while((year_R <= GPS.year) && (month_R <= GPS.month) && (day_R <= GPS.day) && (hour_R <= GPS.hour) && (minute_R <= GPS.minute) && (second_R << GPS.seconds)) {
+  while ((hour_R <= GPS.hour) && (minute_R <= GPS.minute) && (second_R << GPS.seconds)) {
     update();
   }
   cli();
@@ -178,15 +182,15 @@ unit_cntl Control;          //used to control the unit
 
 void unit_cntl::StageS() {  //runs the stage selector code
   XBEE.Receive();
-  lcd.setBacklight(BLUE);
   if((msg [0]) == ID[0]) {  //first stage sets ID.
     if (m == 0) {
+      lcd.setBacklight(BLUE);
       XBEE.ID_Set();
       lcd.clear();
       m = 1;
     }
     else if ((msg [0] == ID [0]) && (msg [1] == ID [1])) { //all other stages exceutes a command
-      lcd.clear();
+      //lcd.clear();
       EXECUTE();
       m = 1;
     }
@@ -211,7 +215,7 @@ void unit_cntl::EXECUTE (void) { //Executes the command from the user end or fro
       lcd.clear();
       lcd.setBacklight(YELLOW);
       lcd.print("ARMED");
-      snprintf(PH, sizeof PH, "000000000000");
+      snprintf(PH, sizeof PH, "TickTickTick");
       XBEE.Creator(PH);
       XBEE.Send();
   }
@@ -226,9 +230,11 @@ void unit_cntl::EXECUTE (void) { //Executes the command from the user end or fro
       CC_test = test(SHM_SWI); //checks continuity
       if (CC_test == HIGH) {
         CCT = 1;
+        digitalWrite(GREENLED, HIGH);
       }
       else {
         CCT = 0;
+        digitalWrite(GREENLED, LOW);
       }
       //send user end the continuity and the time down to milliseconds
       snprintf( PH, sizeof PH , "%d",CCT); 
@@ -290,25 +296,28 @@ void unit_cntl::EXECUTE (void) { //Executes the command from the user end or fro
       }
   }
 
-  else if(XBEE.Command == Explode_D) {
+  else if(XBEE.Command == Explode_Time) {
       lcd.setBacklight(RED);
       //Delay code
+      /*
       int days = (int) XBEE.data [0];
       days = days*100;
-      days += 10*((int) XBEE.data [1]);
+      days += (int) XBEE.data [1];
       days += (int) XBEE.data [2];
-      int hour = (int) XBEE.data [3];
-      hour = hour*10;
-      hour += (int) XBEE.data [4];
-      int minutes = 10*((int) XBEE.data [5]);
-      minutes += (int) XBEE.data [6];
-      int seconds = 60*(minutes + 60*(hour + 24*(days)));
-      seconds += 10*((int) XBEE.data [7]);
-      seconds += (int) XBEE.data [8];
-      int milli = 100*((int) XBEE.data [9]);
-      milli += 10*((int) XBEE.data [10]);
-      milli += (int) XBEE.data [11];
-      delay((1000*seconds + milli));
+      */
+      int hour = (int) XBEE.data [0];
+      hour += (int) XBEE.data [1];
+      int minutes = ((int) XBEE.data [2]);
+      minutes += (int) XBEE.data [3];
+      int seconds = 60*((minutes) + 60*(hour));// + 24*(days)));
+      seconds += ((int) XBEE.data [4]);
+      seconds += (int) XBEE.data [5];
+      //int milli = 100*((int) XBEE.data [9]);
+      //milli += 10*((int) XBEE.data [10]);
+      //milli += (int) XBEE.data [11];
+      delay((1000*seconds)); //+ milli));
+      Serial.print(XBEE.data);
+      lcd.print(XBEE.data);
       //end delay code
       //run detonation code
       digitalWrite(EXPLODE, HIGH);
@@ -328,9 +337,12 @@ void unit_cntl::EXECUTE (void) { //Executes the command from the user end or fro
       lcd.print("Exploded");
       digitalWrite(EXPLODE, HIGH);
   }
-  else if(XBEE.Command == Explode_Time) {
+  else if(XBEE.Command == Explode_D) {
       //Extract time desired from the message
       lcd.print("Exploding");
+      lcd.setBacklight(RED);
+      Serial.print(XBEE.data);
+      /*
       int year_R = 2000;
       year_R += 10*((int) XBEE.data [0]);
       year_R += (int) XBEE.data [1];
@@ -338,17 +350,19 @@ void unit_cntl::EXECUTE (void) { //Executes the command from the user end or fro
       month_R = (int) XBEE.data [3];
       int day_R = 10*((int) XBEE.data [4]);
       day_R += (int) XBEE.data [5];
-      int hour_R = 10*((int) XBEE.data [6]);
-      hour_R += (int) XBEE.data [7];
-      int minutes_R = (int) XBEE.data [8];
-      minutes_R += (int) XBEE.data [9];
-      int second_R = 10*((int) XBEE.data [10]);
-      second_R += (int) XBEE.data [11];
+      */
+      int hour_R = ((int) XBEE.data [0]);
+      //hour_R += (int) XBEE.data [7];
+      int minutes_R = (int) XBEE.data[1];
+      //minutes_R += (int) XBEE.data [9];
+      int second_R = ((int) XBEE.data [2]);
+      //second_R += (int) XBEE.data [11];
       //run GPS check time code
-      myGPS.waitT(year_R, month_R, day_R, hour_R, minutes_R, second_R);
+      //myGPS.waitT(year_R, month_R, day_R, hour_R, minutes_R, second_R);
+      myGPS.waitT(hour_R, minutes_R, second_R);
       //run detonation code
       lcd.setBacklight(RED);
-      XBEE.Creator((char*) "Allah Ackbar");
+      XBEE.Creator("Allah Ackbar");
       XBEE.Send();
       digitalWrite(EXPLODE, HIGH);
   }
@@ -374,6 +388,8 @@ void setup() {
   pinMode(SHM_testP, INPUT);  //Result form continuity test
   pinMode(ARM, OUTPUT);       //Arm Pin
   pinMode(EXPLODE, OUTPUT);   //Explode Pin
+  pinMode(GREENLED, OUTPUT);
+  digitalWrite(GREENLED, LOW);
   digitalWrite(ARM, LOW);
   digitalWrite(EXPLODE, LOW);
   Serial.begin(9600); // 9600 Baud Rate, uses pin 0/1 and USB
