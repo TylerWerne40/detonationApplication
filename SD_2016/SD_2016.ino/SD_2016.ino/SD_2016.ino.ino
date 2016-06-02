@@ -7,6 +7,8 @@
 Adafruit_GPS GPS(&mySerial);
 
 #define TO_HEX(i) (i <= 9 ? '0' + i : 'A' - 10 + i)
+#define YELLOWLED 38
+#define GREENLED 39
 #define ARM 41
 #define EXPLODE 40
 #define SHM_SWIP 42
@@ -24,9 +26,9 @@ Adafruit_GPS GPS(&mySerial);
 #define WHITE 0x7
 
 char ID [2]= {'1', '0'};
-int CC_test = 0;
+bool CC_test = false;
 int n = 1;
-int SHM_SWI = HIGH;
+bool SHM_SWI = LOW;
 int idk;
 int p = 0;
 char monTest;
@@ -54,7 +56,7 @@ int const Explode_Time = (int const) z;
 boolean usingInterrupt = false;
 
 void useInterrupt(boolean); // Func prototype keeps Arduino 0023 happy
-int test(int);
+bool test(bool);
 void EXECUTE (void);
 SoftwareSerial XBee(RxP, TxP);
 Adafruit_RGBLCDShield lcd = Adafruit_RGBLCDShield();
@@ -74,7 +76,7 @@ class Comms {                       //used to communicate with XBEE
   private:
     char CommandC [2];
     char Received [16];
-    char sent [16];
+    char sent [17];
     void set_vals(char [16]);
 };
 
@@ -111,12 +113,13 @@ void Comms::Creator (char r [12]) {   // r:Data
   sent[2] = '0';
   sent[3] = '4';
   */
-  snprintf(sent, sizeof sent, "000%d", 4);  //sends to user end and command is data only
-  strcat(sent,(char *) r);                  //sends data
+  sprintf(sent, "0004%s", r);  //sends to user end and command is data only
 }
 
 void Comms::Send(void) {
   Serial.print(sent);
+  lcd.clear();
+  lcd.print(sent);
   //Serial.write(sent);
 }
 
@@ -124,7 +127,8 @@ Comms XBEE;
 
 class GPSo {                  //Used to operate the GPS
   public:
-    void waitT(int, int, int, int, int, int);
+//    void waitT(int, int, int, int, int, int);
+    void waitT( int, int, int);
     void update(void);
     void begin(void);
   private:
@@ -147,16 +151,28 @@ void GPSo::update(void) { //must have sei() somewhere before this
     
     if (!GPS.parse(stringptr))   // this also sets the newNMEAreceived() flag to false
       return;  // we can fail to parse a sentence in which case we should just wait for another
-    lcd.print(GPS.longitudeDegrees);
   } 
 }
 
-void GPSo::waitT(int year_R, int month_R, int day_R, int hour_R, int minute_R, int second_R) {
-  sei();
-  while((year_R <= GPS.year) && (month_R <= GPS.month) && (day_R <= GPS.day) && (hour_R <= GPS.hour) && (minute_R <= GPS.minute) && (second_R < GPS.seconds)) {
+//void GPSo::waitT(int year_R, int month_R, int day_R, int hour_R, int minute_R, int second_R) {
+void GPSo::waitT(int hour_R, int minute_R, int second_R) {
+  //sei();
+  //while((year_R <= GPS.year) && (month_R <= GPS.month) && (day_R <= GPS.day) && (hour_R <= GPS.hour) && (minute_R <= GPS.minute) && (second_R << GPS.seconds)) {
+  long det_time = 3600*hour_R + 60*minute_R+ second_R;
+  long cur_time = 3600*GPS.hour + 60*GPS.minute+ GPS.seconds;
+  //while (((hour_R <= GPS.hour) && (minute_R <= GPS.minute) && (second_R <= GPS.seconds))) {
+  while(cur_time < det_time){
     update();
+    cur_time = 3600*GPS.hour + 60*GPS.minute+ GPS.seconds;
+    delay(1000);
+    char tmp[16];
+    //sprintf(tmp, "%d%d%d,%d%d%02d",GPS.hour, GPS.minute, GPS.seconds, hour_R, minute_R, second_R);
+    sprintf(tmp, "%ld", det_time - cur_time);
+    lcd.clear();
+    lcd.print(tmp);
   }
-  cli();
+  //cli();
+  return;
 }
 
 GPSo myGPS;               //used to operate the GPS
@@ -168,6 +184,7 @@ class unit_cntl {
   void Auto_Update(void);
   int m;
   private: 
+  int ARMED = 0;
   int CCT;
   int num;
   int prev_C;
@@ -178,22 +195,22 @@ unit_cntl Control;          //used to control the unit
 
 void unit_cntl::StageS() {  //runs the stage selector code
   XBEE.Receive();
-  lcd.setBacklight(BLUE);
   if((msg [0]) == ID[0]) {  //first stage sets ID.
     if (m == 0) {
+      lcd.setBacklight(BLUE);
       XBEE.ID_Set();
       lcd.clear();
       m = 1;
     }
     else if ((msg [0] == ID [0]) && (msg [1] == ID [1])) { //all other stages exceutes a command
-      lcd.clear();
+      //lcd.clear();
       EXECUTE();
       m = 1;
     }
   }
   int i = 0;
   for(i = 0; i < 17; i++){
-    msg[i] = '\0';
+    msg[i] = '0';
   }
 }
 
@@ -209,9 +226,10 @@ void unit_cntl::EXECUTE (void) { //Executes the command from the user end or fro
   if (XBEE.Command == Arm) {
       digitalWrite(ARM, HIGH);
       lcd.clear();
+      ARMED = 1;
       lcd.setBacklight(YELLOW);
       lcd.print("ARMED");
-      snprintf(PH, sizeof PH, "000000000000");
+      snprintf(PH, sizeof PH, "TickTickTick");
       XBEE.Creator(PH);
       XBEE.Send();
   }
@@ -224,11 +242,13 @@ void unit_cntl::EXECUTE (void) { //Executes the command from the user end or fro
 
   else if(XBEE.Command == S_Chk) { //status check
       CC_test = test(SHM_SWI); //checks continuity
-      if (CC_test == HIGH) {
+      if (CC_test == true) {
         CCT = 1;
+        digitalWrite(GREENLED, HIGH);
       }
       else {
         CCT = 0;
+        digitalWrite(GREENLED, LOW);
       }
       //send user end the continuity and the time down to milliseconds
       snprintf( PH, sizeof PH , "%d",CCT); 
@@ -290,47 +310,65 @@ void unit_cntl::EXECUTE (void) { //Executes the command from the user end or fro
       }
   }
 
-  else if(XBEE.Command == Explode_D) {
+  else if(XBEE.Command == Explode_Time) {
+    if( ARMED == 1) {
       lcd.setBacklight(RED);
+      lcd.clear();
       //Delay code
+      /*
       int days = (int) XBEE.data [0];
       days = days*100;
-      days += 10*((int) XBEE.data [1]);
+      days += (int) XBEE.data [1];
       days += (int) XBEE.data [2];
-      int hour = (int) XBEE.data [3];
-      hour = hour*10;
-      hour += (int) XBEE.data [4];
-      int minutes = 10*((int) XBEE.data [5]);
-      minutes += (int) XBEE.data [6];
-      int seconds = 60*(minutes + 60*(hour + 24*(days)));
-      seconds += 10*((int) XBEE.data [7]);
-      seconds += (int) XBEE.data [8];
-      int milli = 100*((int) XBEE.data [9]);
-      milli += 10*((int) XBEE.data [10]);
-      milli += (int) XBEE.data [11];
-      delay((1000*seconds + milli));
+      *///
+      int hour = 10*((int) XBEE.data [0]);
+      hour += (int) XBEE.data [1];
+      lcd.print(hour);
+      int minutes = 10*((int) XBEE.data [2]);
+      minutes += (int) XBEE.data [3];
+      lcd.println(minutes);
+      int seconds = 60*((minutes) + 60*(hour));// + 24*(days)));
+      seconds += 10*((int) XBEE.data [4]);
+      seconds += (int) XBEE.data [5];
+      lcd.print(seconds);
+      //int milli = 100*((int) XBEE.data [9]);
+      //milli += 10*((int) XBEE.data [10]);
+      //milli += (int) XBEE.data [11];
+      delay((1000*seconds)); //+ milli));
+      lcd.print(XBEE.data);
       //end delay code
       //run detonation code
       digitalWrite(EXPLODE, HIGH);
-      lcd.clear();
-      lcd.setCursor(0,0);
       lcd.write((int) XBEE.data);
-      XBEE.Creator("Allah Ackbar");
+      XBEE.Creator("Detonate0000");
       XBEE.Send();
+    }
+    else{
+      XBEE.Creator("NotArmed0000");
+      XBEE.Send();
+    }
   }
 
   else if(XBEE.Command == Explode_Now) {
+    if( ARMED == 1) {
       //run detonation code
       lcd.setBacklight(RED);
-      //snprintf(PH, sizeof PH, "AllahAckbar!");
-      XBEE.Creator("Allah Ackbar");
+      XBEE.Creator("Detonate0000");
       XBEE.Send();
       lcd.print("Exploded");
       digitalWrite(EXPLODE, HIGH);
+    }
+    else{
+      XBEE.Creator("NotArmed0000");
+      XBEE.Send();
+    }
   }
-  else if(XBEE.Command == Explode_Time) {
+  else if(XBEE.Command == Explode_D) {
+    if( ARMED == 1) {
       //Extract time desired from the message
-      lcd.print("Exploding");
+      lcd.clear();
+      lcd.setBacklight(VIOLET);
+      /*
       int year_R = 2000;
       year_R += 10*((int) XBEE.data [0]);
       year_R += (int) XBEE.data [1];
@@ -338,19 +376,31 @@ void unit_cntl::EXECUTE (void) { //Executes the command from the user end or fro
       month_R = (int) XBEE.data [3];
       int day_R = 10*((int) XBEE.data [4]);
       day_R += (int) XBEE.data [5];
-      int hour_R = 10*((int) XBEE.data [6]);
-      hour_R += (int) XBEE.data [7];
-      int minutes_R = (int) XBEE.data [8];
-      minutes_R += (int) XBEE.data [9];
-      int second_R = 10*((int) XBEE.data [10]);
-      second_R += (int) XBEE.data [11];
+      */
+      int hour_R = 10*((int) XBEE.data [0] - '0');
+      hour_R += (int) XBEE.data [1] - '0';
+      int minutes_R = 10*((int) XBEE.data[2]- '0');
+      minutes_R += (int) XBEE.data [3] - '0';
+      int second_R = 10*((int) XBEE.data [4]- '0');
+      second_R += (int) XBEE.data [5] - '0';
+      lcd.clear();
+      XBEE.Creator("CountingDown");
+      XBEE.Send();
       //run GPS check time code
-      myGPS.waitT(year_R, month_R, day_R, hour_R, minutes_R, second_R);
+      //myGPS.waitT(year_R, month_R, day_R, hour_R, minutes_R, second_R);
+      myGPS.waitT(hour_R, minutes_R, second_R);
+      lcd.clear();
       //run detonation code
       lcd.setBacklight(RED);
-      XBEE.Creator((char*) "Allah Ackbar");
+      lcd.print("BOOMBOOMBOOM");
+      XBEE.Creator("Detonate0000");
       XBEE.Send();
       digitalWrite(EXPLODE, HIGH);
+    }
+    else{
+      XBEE.Creator("NotArmed0000");
+      XBEE.Send();
+    }
   }
 /*
   else {
@@ -374,6 +424,8 @@ void setup() {
   pinMode(SHM_testP, INPUT);  //Result form continuity test
   pinMode(ARM, OUTPUT);       //Arm Pin
   pinMode(EXPLODE, OUTPUT);   //Explode Pin
+  pinMode(GREENLED, OUTPUT);
+  digitalWrite(GREENLED, LOW);
   digitalWrite(ARM, LOW);
   digitalWrite(EXPLODE, LOW);
   Serial.begin(9600); // 9600 Baud Rate, uses pin 0/1 and USB
@@ -441,7 +493,7 @@ void loop() {
   myGPS.update();  
 }
 
-int test(int test_cond) {   //runs the continuity checker
+bool test(bool test_cond) {   //runs the continuity checker
   digitalWrite(SHM_SWIP, test_cond);
   int test_ret = digitalRead(SHM_testP);
   return test_ret;
